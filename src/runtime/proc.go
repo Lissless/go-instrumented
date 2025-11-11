@@ -765,6 +765,12 @@ func schedinit() {
 	}
 	unlock(&sched.lock)
 
+	// Check to see if instrumentation metrics will be collected
+	if gogetenv("GOINSTRUMENT") == "1" {
+        instrumentationEnabled = true
+        print("Goroutine instrumentation enabled\n")
+    }
+
 	// World is effectively started now, as P's can run.
 	worldStarted()
 
@@ -2874,6 +2880,14 @@ func execute(gp *g, inheritTime bool) {
 			traceGoSysExit()
 		}
 		traceGoStart()
+	}
+
+	// Simple log that the goroutine was created
+	if instrumentationEnabled {
+		// if this breaks there is a possiblity that gp.m is nil
+		instrcopy := gp
+		// log_goroutine_creation(gp.goid, gp.m.id);
+		log_goroutine_creation(instrcopy);
 	}
 
 	gogo(&gp.sched)

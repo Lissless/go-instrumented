@@ -1187,6 +1187,7 @@ var (
 var (
 	islibrary bool // -buildmode=c-shared
 	isarchive bool // -buildmode=c-archive
+	instrumentationEnabled bool // this turns on instrumentation functionality for logging goroutine processes
 )
 
 // Must agree with internal/buildcfg.FramePointerEnabled.
