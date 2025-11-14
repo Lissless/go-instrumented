@@ -2867,6 +2867,13 @@ func execute(gp *g, inheritTime bool) {
 		mp.p.ptr().schedtick++
 	}
 
+	// log after casgstatus since this function marks the goroutine as "running"
+	// Simple log that the goroutine was executed
+	if instrumentationEnabled {
+		gp_copy := gp
+		log_goroutine_execution(gp_copy)
+	}
+
 	// Check whether the profiler needs to be turned on or off.
 	hz := sched.profilehz
 	if mp.profilehz != hz {
@@ -2880,14 +2887,6 @@ func execute(gp *g, inheritTime bool) {
 			traceGoSysExit()
 		}
 		traceGoStart()
-	}
-
-	// Simple log that the goroutine was created
-	if instrumentationEnabled {
-		// if this breaks there is a possiblity that gp.m is nil
-		instrcopy := gp
-		// log_goroutine_creation(gp.goid, gp.m.id);
-		log_goroutine_creation(instrcopy);
 	}
 
 	gogo(&gp.sched)
@@ -4485,6 +4484,10 @@ func malg(stacksize int32) *g {
 // The compiler turns a go statement into a call to this.
 func newproc(fn *funcval) {
 	gp := getg()
+	if instrumentationEnabled {
+		gp_copy := gp
+		log_goroutine_creation(gp_copy)
+	}
 	pc := getcallerpc()
 	systemstack(func() {
 		newg := newproc1(fn, gp, pc)
@@ -5968,6 +5971,11 @@ func globrunqput(gp *g) {
 
 	sched.runq.pushBack(gp)
 	sched.runqsize++
+	// TODO: Find out who calls this to find the processor that is doing this
+	if instrumentationEnabled{
+		gp_copy := gp
+		log_goroutine_local_global_push(gp_copy)
+	}
 }
 
 // Put gp at the head of the global runnable queue.
@@ -6019,12 +6027,24 @@ func globrunqget(pp *p, max int32) *g {
 	sched.runqsize -= n
 
 	gp := sched.runq.pop()
+	if instrumentationEnabled {
+		gp_copy := gp
+		pp_copy := pp
+		log_goroutine_global_to_local(gp_copy, pp_copy)
+	}
 	n--
+	// loop through a bunch of goroutines and put them on a local queue
 	for ; n > 0; n-- {
 		gp1 := sched.runq.pop()
+		// TODO: log attempt to move from global to local?
+		if instrumentationEnabled {
+			gp_copy := gp1
+			pp_copy := pp
+			log_goroutine_global_to_local(gp_copy, pp_copy)
+		}
 		runqput(pp, gp1, false)
 	}
-	return gp
+	return gp // TODO: find out what happens to this particular goroutine
 }
 
 // pMask is an atomic bitstring with one bit per P.
@@ -6217,6 +6237,12 @@ func runqput(pp *p, gp *g, next bool) {
 			goto retryNext
 		}
 		if oldnext == 0 {
+			// TODO: log we running now! aka load to bypass head of queue
+			if instrumentationEnabled{
+				gp_copy := gp
+				pp_copy := pp
+				log_goroutine_local_head_push(gp_copy, pp_copy)
+			}
 			return
 		}
 		// Kick the old runnext out to the regular run queue.
@@ -6229,9 +6255,16 @@ retry:
 	if t-h < uint32(len(pp.runq)) {
 		pp.runq[t%uint32(len(pp.runq))].set(gp)
 		atomic.StoreRel(&pp.runqtail, t+1) // store-release, makes the item available for consumption
+		// TODO: log Add process to tail of local runq
+		if instrumentationEnabled{
+			gp_copy := gp
+			pp_copy := pp
+			log_goroutine_local_tail_push(gp_copy, pp_copy)
+		}
 		return
 	}
 	if runqputslow(pp, gp, h, t) {
+		// TODO: log local to Global?
 		return
 	}
 	// the queue is not full, now the put above must succeed
@@ -6335,6 +6368,11 @@ func runqget(pp *p) (gp *g, inheritTime bool) {
 		}
 		gp := pp.runq[h%uint32(len(pp.runq))].ptr()
 		if atomic.CasRel(&pp.runqhead, h, h+1) { // cas-release, commits consume
+			if instrumentationEnabled {
+				gp_copy := gp
+				pp_copy := pp
+				log_goroutine_local_pop(gp_copy, pp_copy)
+			}			
 			return gp, false
 		}
 	}
@@ -6373,6 +6411,11 @@ retry:
 	// See https://groups.google.com/g/golang-dev/c/0pTKxEKhHSc/m/6Q85QjdVBQAJ for more details.
 	for i := uint32(0); i < qn; i++ {
 		gp := pp.runq[(h+i)%uint32(len(pp.runq))].ptr()
+		if instrumentationEnabled {
+			gp_copy := gp
+			pp_copy := pp
+			log_goroutine_local_drain(gp_copy, pp_copy)
+		}
 		drainQ.pushBack(gp)
 		n++
 	}
@@ -6417,17 +6460,22 @@ func runqgrab(pp *p, batch *[256]guintptr, batchHead uint32, stealRunNextG bool)
 						continue
 					}
 					batch[batchHead%uint32(len(batch))] = next
-					return 1
+					return 1 // we have only stolen one goroutine and it is the runnext from pp
 				}
 			}
-			return 0
+			return 0 // there is nothing to steal on the queue and there is nothing to steal on runnext
 		}
 		if n > uint32(len(pp.runq)/2) { // read inconsistent h and t
 			continue
 		}
 		for i := uint32(0); i < n; i++ {
-			g := pp.runq[(h+i)%uint32(len(pp.runq))]
-			batch[(batchHead+i)%uint32(len(batch))] = g
+			g := pp.runq[(h+i)%uint32(len(pp.runq))] // remove the goroutine from pp
+			if instrumentationEnabled {
+				gp_copy := g.ptr() // g is a uintptr and thus needs to be converted for use
+				pp_copy := pp
+				log_goroutine_local_steal(gp_copy, pp_copy)
+			}
+			batch[(batchHead+i)%uint32(len(batch))] = g // place the goroutine in the "batch" which is often a different processer runqueue
 		}
 		if atomic.CasRel(&pp.runqhead, h, h+n) { // cas-release, commits consume
 			return n
@@ -6444,9 +6492,9 @@ func runqsteal(pp, p2 *p, stealRunNextG bool) *g {
 	if n == 0 {
 		return nil
 	}
-	n--
-	gp := pp.runq[(t+n)%uint32(len(pp.runq))].ptr()
-	if n == 0 {
+	n-- // remove one of the "counted" pointers stolen because we are going to return one of them from here
+	gp := pp.runq[(t+n)%uint32(len(pp.runq))].ptr() // get the 
+	if n == 0 { // if the difference between runqhead and runqtail is 1 or 2
 		return gp
 	}
 	h := atomic.LoadAcq(&pp.runqhead) // load-acquire, synchronize with consumers
