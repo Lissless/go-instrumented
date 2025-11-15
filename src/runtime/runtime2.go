@@ -1087,6 +1087,7 @@ const (
 	waitReasonDebugCall                               // "debug call"
 	waitReasonGCMarkTermination                       // "GC mark termination"
 	waitReasonStoppingTheWorld                        // "stopping the world"
+	waitReasonSyscall								  // "Goroutine about to enter a Syscall"
 )
 
 var waitReasonStrings = [...]string{
@@ -1122,6 +1123,7 @@ var waitReasonStrings = [...]string{
 	waitReasonDebugCall:             "debug call",
 	waitReasonGCMarkTermination:     "GC mark termination",
 	waitReasonStoppingTheWorld:      "stopping the world",
+	waitReasonSyscall: 				 "goroutine entering syscall",
 }
 
 func (w waitReason) String() string {
