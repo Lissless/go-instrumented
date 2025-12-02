@@ -824,9 +824,10 @@ func schedinit() {
 	if n, ok := atoi32(gogetenv("GOMAXPROCS")); ok && n > 0 {
 		procs = n
 	}
-	if n, ok := atoi32(gogetenv("UINTR")); ok && n == 1 {
-		uintr_enabled = true
-	}
+	// NOTICE: Turned off User Interrupts
+	// if n, ok := atoi32(gogetenv("UINTR")); ok && n == 1 {
+	// 	uintr_enabled = true
+	// }
 	if n, ok := atoi32(gogetenv("GOFORCEPREEMPTNS")); ok && n > 0 {
 		forcePreemptNS = int64(n)
 		forcePreemptUS = uint32(forcePreemptNS / 1000)
