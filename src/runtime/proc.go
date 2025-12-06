@@ -771,9 +771,9 @@ func schedinit() {
 
 	// Check to see if instrumentation metrics will be collected
 	if gogetenv("GOINSTRUMENT") == "1" {
-        instrumentationEnabled = true
-        print("Goroutine instrumentation enabled\n")
-    }
+		instrumentationEnabled = true
+		print("Goroutine instrumentation enabled\n")
+	}
 
 	// World is effectively started now, as P's can run.
 	worldStarted()
@@ -3509,6 +3509,10 @@ func injectglist(glist *gList) {
 		tail = gp
 		qsize++
 		casgstatus(gp, _Gwaiting, _Grunnable)
+		if instrumentationEnabled {
+			gp_copy := gp
+			log_goroutine_ready(gp_copy)
+		}
 	}
 
 	// Turn the gList into a gQueue.
@@ -5997,7 +6001,7 @@ func globrunqput(gp *g) {
 	sched.runq.pushBack(gp)
 	sched.runqsize++
 	// TODO: Find out who calls this to find the processor that is doing this
-	if instrumentationEnabled{
+	if instrumentationEnabled {
 		gp_copy := gp
 		log_goroutine_local_global_push(gp_copy)
 	}
@@ -6023,6 +6027,19 @@ func globrunqputhead(gp *g) {
 //go:nowritebarrierrec
 func globrunqputbatch(batch *gQueue, n int32) {
 	assertLockHeld(&sched.lock)
+
+	// since the dequeue is so efficient we need to pop them off one at a time to
+	// log them. we know that n will represent the full size of the queue
+	// because a pushBackAll is issued
+	if instrumentationEnabled {
+		var i int32
+		for i = 0; i < n; i++ {
+			gp := batch.pop() // this is technically not a copy, woudl this mess things up??
+			gp_copy := gp     // for safety's sake
+			log_goroutine_local_global_push(gp_copy)
+			batch.pushBack(gp)
+		}
+	}
 
 	sched.runq.pushBackAll(*batch)
 	sched.runqsize += n
@@ -6262,8 +6279,8 @@ func runqput(pp *p, gp *g, next bool) {
 			goto retryNext
 		}
 		if oldnext == 0 {
-			// TODO: log we running now! aka load to bypass head of queue
-			if instrumentationEnabled{
+			//log we running now! aka load to bypass head of queue
+			if instrumentationEnabled {
 				gp_copy := gp
 				pp_copy := pp
 				log_goroutine_local_head_push(gp_copy, pp_copy)
@@ -6280,8 +6297,8 @@ retry:
 	if t-h < uint32(len(pp.runq)) {
 		pp.runq[t%uint32(len(pp.runq))].set(gp)
 		atomic.StoreRel(&pp.runqtail, t+1) // store-release, makes the item available for consumption
-		// TODO: log Add process to tail of local runq
-		if instrumentationEnabled{
+		// log Add process to tail of local runq
+		if instrumentationEnabled {
 			gp_copy := gp
 			pp_copy := pp
 			log_goroutine_local_tail_push(gp_copy, pp_copy)
@@ -6289,7 +6306,7 @@ retry:
 		return
 	}
 	if runqputslow(pp, gp, h, t) {
-		// TODO: log local to Global?
+		// TODO: log local to Global? --> no, log this in globrunqputpatch
 		return
 	}
 	// the queue is not full, now the put above must succeed
@@ -6347,6 +6364,11 @@ func runqputbatch(pp *p, q *gQueue, qsize int) {
 	n := uint32(0)
 	for !q.empty() && t-h < uint32(len(pp.runq)) {
 		gp := q.pop()
+		if instrumentationEnabled {
+			gp_copy := gp
+			pp_copy := pp
+			log_goroutine_local_tail_push(gp_copy, pp_copy)
+		}
 		pp.runq[t%uint32(len(pp.runq))].set(gp)
 		t++
 		n++
@@ -6397,7 +6419,7 @@ func runqget(pp *p) (gp *g, inheritTime bool) {
 				gp_copy := gp
 				pp_copy := pp
 				log_goroutine_local_pop(gp_copy, pp_copy)
-			}			
+			}
 			return gp, false
 		}
 	}
@@ -6517,9 +6539,9 @@ func runqsteal(pp, p2 *p, stealRunNextG bool) *g {
 	if n == 0 {
 		return nil
 	}
-	n-- // remove one of the "counted" pointers stolen because we are going to return one of them from here
-	gp := pp.runq[(t+n)%uint32(len(pp.runq))].ptr() // get the 
-	if n == 0 { // if the difference between runqhead and runqtail is 1 or 2
+	n--                                             // remove one of the "counted" pointers stolen because we are going to return one of them from here
+	gp := pp.runq[(t+n)%uint32(len(pp.runq))].ptr() // get the
+	if n == 0 {                                     // if the difference between runqhead and runqtail is 1 or 2
 		return gp
 	}
 	h := atomic.LoadAcq(&pp.runqhead) // load-acquire, synchronize with consumers
