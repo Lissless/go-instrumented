@@ -1098,6 +1098,7 @@ const (
 	waitReasonDebugCall                               // "debug call"
 	waitReasonGCMarkTermination                       // "GC mark termination"
 	waitReasonStoppingTheWorld                        // "stopping the world"
+	waitReasonSyscall								  // "Goroutine about to enter a Syscall"
 )
 
 var waitReasonStrings = [...]string{
@@ -1198,6 +1199,7 @@ var (
 var (
 	islibrary bool // -buildmode=c-shared
 	isarchive bool // -buildmode=c-archive
+	instrumentationEnabled bool // this turns on instrumentation functionality for logging goroutine processes
 )
 
 // Must agree with internal/buildcfg.FramePointerEnabled.

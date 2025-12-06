@@ -445,6 +445,10 @@ func gopark(unlockf func(*g, unsafe.Pointer) bool, lock unsafe.Pointer, reason w
 	if status != _Grunning && status != _Gscanrunning {
 		throw("gopark: bad g status")
 	}
+	if instrumentationEnabled {
+		gp_copy := gp
+		log_goroutine_idle(gp_copy, reason)
+	}
 	mp.waitlock = lock
 	mp.waitunlockf = unlockf
 	gp.waitreason = reason
@@ -846,6 +850,12 @@ func schedinit() {
 	}
 	unlock(&sched.lock)
 
+	// Check to see if instrumentation metrics will be collected
+	if gogetenv("GOINSTRUMENT") == "1" {
+		instrumentationEnabled = true
+		print("Goroutine instrumentation enabled\n")
+	}
+
 	// World is effectively started now, as P's can run.
 	worldStarted()
 
@@ -986,6 +996,10 @@ func ready(gp *g, traceskip int, next bool) {
 
 	// status is Gwaiting or Gscanwaiting, make Grunnable and put on runq
 	casgstatus(gp, _Gwaiting, _Grunnable)
+	if instrumentationEnabled {
+		gp_copy := gp
+		log_goroutine_ready(gp_copy)
+	}
 	runqput(mp.p.ptr(), gp, next)
 	wakep()
 	releasem(mp)
@@ -2949,6 +2963,13 @@ func execute(gp *g, inheritTime bool) {
 		mp.p.ptr().schedtick++
 	}
 
+	// log after casgstatus since this function marks the goroutine as "running"
+	// Simple log that the goroutine was executed
+	if instrumentationEnabled {
+		gp_copy := gp
+		log_goroutine_execution(gp_copy)
+	}
+
 	// Check whether the profiler needs to be turned on or off.
 	hz := sched.profilehz
 	if mp.profilehz != hz {
@@ -3602,6 +3623,10 @@ func injectglist(glist *gList) {
 		tail = gp
 		qsize++
 		casgstatus(gp, _Gwaiting, _Grunnable)
+		if instrumentationEnabled {
+			gp_copy := gp
+			log_goroutine_ready(gp_copy)
+		}
 	}
 
 	// Turn the gList into a gQueue.
@@ -4261,6 +4286,10 @@ func reentersyscall(pc, sp uintptr) {
 	gp.syscallsp = sp
 	gp.syscallpc = pc
 	casgstatus(gp, _Grunning, _Gsyscall)
+	if instrumentationEnabled {
+		gp_copy := gp
+		log_goroutine_idle(gp_copy, waitReasonSyscall)
+	}
 	if staticLockRanking {
 		// When doing static lock ranking casgstatus can call
 		// systemstack which clobbers g.sched.
@@ -4371,6 +4400,10 @@ func entersyscallblock() {
 		})
 	}
 	casgstatus(gp, _Grunning, _Gsyscall)
+	if instrumentationEnabled {
+		gp_copy := gp
+		log_goroutine_idle(gp_copy, waitReasonSyscall)
+	}
 	if gp.syscallsp < gp.stack.lo || gp.stack.hi < gp.syscallsp {
 		systemstack(func() {
 			print("entersyscallblock inconsistent ", hex(sp), " ", hex(gp.sched.sp), " ", hex(gp.syscallsp), " [", hex(gp.stack.lo), ",", hex(gp.stack.hi), "]\n")
@@ -4437,6 +4470,10 @@ func exitsyscall() {
 		gp.m.p.ptr().syscalltick++
 		// We need to cas the status and scan before resuming...
 		casgstatus(gp, _Gsyscall, _Grunning)
+		if instrumentationEnabled {
+			gp_copy := gp
+			log_goroutine_ready(gp_copy)
+		}
 
 		// Garbage collector isn't running (since we are),
 		// so okay to clear syscallsp.
@@ -4574,6 +4611,10 @@ func exitsyscallfast_pidle() bool {
 //go:nowritebarrierrec
 func exitsyscall0(gp *g) {
 	casgstatus(gp, _Gsyscall, _Grunnable)
+	if instrumentationEnabled {
+		gp_copy := gp
+		log_goroutine_ready(gp_copy)
+	}
 	dropg()
 	lock(&sched.lock)
 	var pp *p
@@ -4733,6 +4774,11 @@ func newproc(fn *funcval) {
 		newg := newproc1(fn, gp, pc)
 
 		pp := getg().m.p.ptr()
+		if instrumentationEnabled {
+			gp_copy := newg
+			pp_copy := pp
+			log_goroutine_creation(gp_copy, pp_copy)
+		}
 		runqput(pp, newg, true)
 
 		if mainStarted {
@@ -6257,6 +6303,10 @@ func globrunqput(gp *g) {
 
 	sched.runq.pushBack(gp)
 	sched.runqsize++
+	if instrumentationEnabled {
+		gp_copy := gp
+		log_goroutine_local_global_push(gp_copy)
+	}
 }
 
 // Put gp at the head of the global runnable queue.
@@ -6279,6 +6329,19 @@ func globrunqputhead(gp *g) {
 //go:nowritebarrierrec
 func globrunqputbatch(batch *gQueue, n int32) {
 	assertLockHeld(&sched.lock)
+
+	// since the dequeue is so efficient we need to pop them off one at a time to
+	// log them. we know that n will represent the full size of the queue
+	// because a pushBackAll is issued
+	if instrumentationEnabled {
+		var i int32
+		for i = 0; i < n; i++ {
+			gp := batch.pop() // this is technically not a copy, woudl this mess things up??
+			gp_copy := gp     // for safety's sake
+			log_goroutine_local_global_push(gp_copy)
+			batch.pushBack(gp)
+		}
+	}
 
 	sched.runq.pushBackAll(*batch)
 	sched.runqsize += n
@@ -6308,9 +6371,19 @@ func globrunqget(pp *p, max int32) *g {
 	sched.runqsize -= n
 
 	gp := sched.runq.pop()
+	if instrumentationEnabled {
+		gp_copy := gp
+		pp_copy := pp
+		log_goroutine_global_to_local(gp_copy, pp_copy)
+	}
 	n--
 	for ; n > 0; n-- {
 		gp1 := sched.runq.pop()
+		if instrumentationEnabled {
+			gp_copy := gp1
+			pp_copy := pp
+			log_goroutine_global_to_local(gp_copy, pp_copy)
+		}
 		runqput(pp, gp1, false)
 	}
 	return gp
@@ -6550,6 +6623,11 @@ func runqput(pp *p, gp *g, next bool) {
 			goto retryNext
 		}
 		if oldnext == 0 {
+			if instrumentationEnabled {
+				gp_copy := gp
+				pp_copy := pp
+				log_goroutine_local_head_push(gp_copy, pp_copy)
+			}
 			return
 		}
 		// Kick the old runnext out to the regular run queue.
@@ -6562,6 +6640,11 @@ retry:
 	if t-h < uint32(len(pp.runq)) {
 		pp.runq[t%uint32(len(pp.runq))].set(gp)
 		atomic.StoreRel(&pp.runqtail, t+1) // store-release, makes the item available for consumption
+		if instrumentationEnabled {
+			gp_copy := gp
+			pp_copy := pp
+			log_goroutine_local_tail_push(gp_copy, pp_copy)
+		}
 		return
 	}
 	if runqputslow(pp, gp, h, t) {
@@ -6622,6 +6705,11 @@ func runqputbatch(pp *p, q *gQueue, qsize int) {
 	n := uint32(0)
 	for !q.empty() && t-h < uint32(len(pp.runq)) {
 		gp := q.pop()
+		if instrumentationEnabled {
+			gp_copy := gp
+			pp_copy := pp
+			log_goroutine_local_tail_push(gp_copy, pp_copy)
+		}
 		pp.runq[t%uint32(len(pp.runq))].set(gp)
 		t++
 		n++
@@ -6668,6 +6756,11 @@ func runqget(pp *p) (gp *g, inheritTime bool) {
 		}
 		gp := pp.runq[h%uint32(len(pp.runq))].ptr()
 		if atomic.CasRel(&pp.runqhead, h, h+1) { // cas-release, commits consume
+			if instrumentationEnabled {
+				gp_copy := gp
+				pp_copy := pp
+				log_goroutine_local_pop(gp_copy, pp_copy)
+			}
 			return gp, false
 		}
 	}
@@ -6706,6 +6799,11 @@ retry:
 	// See https://groups.google.com/g/golang-dev/c/0pTKxEKhHSc/m/6Q85QjdVBQAJ for more details.
 	for i := uint32(0); i < qn; i++ {
 		gp := pp.runq[(h+i)%uint32(len(pp.runq))].ptr()
+		if instrumentationEnabled {
+			gp_copy := gp
+			pp_copy := pp
+			log_goroutine_local_drain(gp_copy, pp_copy)
+		}
 		drainQ.pushBack(gp)
 		n++
 	}
@@ -6760,6 +6858,11 @@ func runqgrab(pp *p, batch *[256]guintptr, batchHead uint32, stealRunNextG bool)
 		}
 		for i := uint32(0); i < n; i++ {
 			g := pp.runq[(h+i)%uint32(len(pp.runq))]
+			if instrumentationEnabled {
+				gp_copy := g.ptr() // g is a uintptr and thus needs to be converted for use
+				pp_copy := pp
+				log_goroutine_local_steal(gp_copy, pp_copy)
+			}
 			batch[(batchHead+i)%uint32(len(batch))] = g
 		}
 		if atomic.CasRel(&pp.runqhead, h, h+n) { // cas-release, commits consume
