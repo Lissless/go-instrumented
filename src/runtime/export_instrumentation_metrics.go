@@ -1,9 +1,13 @@
 package runtime
 
-func DumpCreationLogs() {
+func DumpInstrumentationLogs() {
 	dump_instrumentation_logs()
 }
 
-func DumpTimingLogs() {
-	dump_timing_logs()
+func DumpQSizeLogs() {
+	dump_qsize_logs()
+}
+
+func DumpGStatusLogs() {
+	dump_change_status_logs()
 }

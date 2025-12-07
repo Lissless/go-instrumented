@@ -1089,11 +1089,31 @@ func casgstatus(gp *g, oldval, newval uint32) {
 		gp.trackingSeq++
 	}
 
-	// logging for instrumentation
+	// in order to prevent stack splitting, manually add to the
+	// log buffer from here
 	if instrumentationEnabled {
 		gp_copy := gp
-		log_goroutine_change_status(gp_copy, oldval, newval)
-		log_q_size(-1, sched.runqsize)
+		idx := atomic.Xadd64(&changeStatusIdx, 1) - 1
+		var wr uint8
+		wr = WAIT_REASON_NOOP
+		if newval == _Gwaiting {
+			wr = uint8(gp_copy.waitreason)
+		}
+		if idx < maxEvents {
+			pid := int32(-1)
+			if gp.m != nil {
+				pid = int32(gp.m.id)
+			}
+			changeStatusEvents[idx] = changeEvent{
+				Timestamp:   nanotime(),
+				GoRoutineID: int64(gp_copy.goid),
+				ActionID:    GOROUTINE_CHANGE_STATUS,
+				ProcessorID: pid,
+				OldStatus:   oldval,
+				NewStatus:   newval,
+				WaitReason:  wr,
+			}
+		}
 	}
 
 	if !gp.tracking {
