@@ -388,10 +388,6 @@ func gopark(unlockf func(*g, unsafe.Pointer) bool, lock unsafe.Pointer, reason w
 	if status != _Grunning && status != _Gscanrunning {
 		throw("gopark: bad g status")
 	}
-	if instrumentationEnabled {
-		gp_copy := gp
-		log_goroutine_idle(gp_copy, reason)
-	}
 	mp.waitlock = lock
 	mp.waitunlockf = unlockf
 	gp.waitreason = reason
@@ -915,10 +911,6 @@ func ready(gp *g, traceskip int, next bool) {
 
 	// status is Gwaiting or Gscanwaiting, make Grunnable and put on runq
 	casgstatus(gp, _Gwaiting, _Grunnable)
-	if instrumentationEnabled {
-		gp_copy := gp
-		log_goroutine_ready(gp_copy)
-	}
 	runqput(mp.p.ptr(), gp, next)
 	wakep()
 	releasem(mp)
@@ -1096,6 +1088,13 @@ func casgstatus(gp *g, oldval, newval uint32) {
 		}
 		gp.trackingSeq++
 	}
+
+	// logging for instrumentation
+	if instrumentationEnabled {
+		gp_copy := gp
+		log_goroutine_change_status(gp_copy, oldval, newval)
+	}
+
 	if !gp.tracking {
 		return
 	}
@@ -1174,6 +1173,10 @@ func casgcopystack(gp *g) uint32 {
 			throw("copystack: bad status, not Gwaiting or Grunnable")
 		}
 		if gp.atomicstatus.CompareAndSwap(oldstatus, _Gcopystack) {
+			if instrumentationEnabled {
+				gp_copy := gp
+				log_goroutine_change_status(gp_copy, oldstatus, _Gcopystack)
+			}
 			return oldstatus
 		}
 	}
@@ -3509,10 +3512,6 @@ func injectglist(glist *gList) {
 		tail = gp
 		qsize++
 		casgstatus(gp, _Gwaiting, _Grunnable)
-		if instrumentationEnabled {
-			gp_copy := gp
-			log_goroutine_ready(gp_copy)
-		}
 	}
 
 	// Turn the gList into a gQueue.
@@ -4029,10 +4028,7 @@ func reentersyscall(pc, sp uintptr) {
 	gp.syscallsp = sp
 	gp.syscallpc = pc
 	casgstatus(gp, _Grunning, _Gsyscall)
-	if instrumentationEnabled {
-		gp_copy := gp
-		log_goroutine_idle(gp_copy, waitReasonSyscall)
-	}
+
 	if staticLockRanking {
 		// When doing static lock ranking casgstatus can call
 		// systemstack which clobbers g.sched.
@@ -4143,10 +4139,7 @@ func entersyscallblock() {
 		})
 	}
 	casgstatus(gp, _Grunning, _Gsyscall)
-	if instrumentationEnabled {
-		gp_copy := gp
-		log_goroutine_idle(gp_copy, waitReasonSyscall)
-	}
+
 	if gp.syscallsp < gp.stack.lo || gp.stack.hi < gp.syscallsp {
 		systemstack(func() {
 			print("entersyscallblock inconsistent ", hex(sp), " ", hex(gp.sched.sp), " ", hex(gp.syscallsp), " [", hex(gp.stack.lo), ",", hex(gp.stack.hi), "]\n")
@@ -4213,10 +4206,6 @@ func exitsyscall() {
 		gp.m.p.ptr().syscalltick++
 		// We need to cas the status and scan before resuming...
 		casgstatus(gp, _Gsyscall, _Grunning)
-		if instrumentationEnabled {
-			gp_copy := gp
-			log_goroutine_ready(gp_copy)
-		}
 
 		// Garbage collector isn't running (since we are),
 		// so okay to clear syscallsp.
@@ -4354,10 +4343,7 @@ func exitsyscallfast_pidle() bool {
 //go:nowritebarrierrec
 func exitsyscall0(gp *g) {
 	casgstatus(gp, _Gsyscall, _Grunnable)
-	if instrumentationEnabled {
-		gp_copy := gp
-		log_goroutine_ready(gp_copy)
-	}
+
 	dropg()
 	lock(&sched.lock)
 	var pp *p
