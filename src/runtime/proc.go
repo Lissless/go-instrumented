@@ -1093,6 +1093,7 @@ func casgstatus(gp *g, oldval, newval uint32) {
 	if instrumentationEnabled {
 		gp_copy := gp
 		log_goroutine_change_status(gp_copy, oldval, newval)
+		log_q_size(-1, sched.runqsize)
 	}
 
 	if !gp.tracking {
@@ -1176,6 +1177,7 @@ func casgcopystack(gp *g) uint32 {
 			if instrumentationEnabled {
 				gp_copy := gp
 				log_goroutine_change_status(gp_copy, oldstatus, _Gcopystack)
+				log_q_size(-1, sched.runqsize)
 			}
 			return oldstatus
 		}
@@ -2883,6 +2885,7 @@ func execute(gp *g, inheritTime bool) {
 	if instrumentationEnabled {
 		gp_copy := gp
 		log_goroutine_execution(gp_copy)
+		log_q_size(-1, sched.runqsize)
 	}
 
 	// Check whether the profiler needs to be turned on or off.
@@ -4509,6 +4512,13 @@ func newproc(fn *funcval) {
 			log_goroutine_creation(gp_copy, pp_copy)
 		}
 		runqput(pp, newg, true)
+		if instrumentationEnabled {
+			pp_copy := pp
+			h := atomic.Load(&pp.runqhead)
+			t := atomic.Load(&pp.runqtail)
+			log_q_size(pp_copy.id, int32(t-h))
+			log_q_size(-1, sched.runqsize)
+		}
 
 		if mainStarted {
 			wakep()
@@ -5986,10 +5996,10 @@ func globrunqput(gp *g) {
 
 	sched.runq.pushBack(gp)
 	sched.runqsize++
-	// TODO: Find out who calls this to find the processor that is doing this
 	if instrumentationEnabled {
 		gp_copy := gp
 		log_goroutine_local_global_push(gp_copy)
+		log_q_size(-1, sched.runqsize)
 	}
 }
 
@@ -6030,6 +6040,9 @@ func globrunqputbatch(batch *gQueue, n int32) {
 	sched.runq.pushBackAll(*batch)
 	sched.runqsize += n
 	*batch = gQueue{}
+	if instrumentationEnabled {
+		log_q_size(-1, sched.runqsize)
+	}
 }
 
 // Try get a batch of G's from the global runnable queue.
@@ -6071,6 +6084,13 @@ func globrunqget(pp *p, max int32) *g {
 			log_goroutine_global_to_local(gp_copy, pp_copy)
 		}
 		runqput(pp, gp1, false)
+	}
+	if instrumentationEnabled {
+		pp_copy := pp
+		h := atomic.Load(&pp.runqhead)
+		t := atomic.Load(&pp.runqtail)
+		log_q_size(pp_copy.id, int32(t-h))
+		log_q_size(-1, sched.runqsize)
 	}
 	return gp // TODO: find out what happens to this particular goroutine
 }
@@ -6270,6 +6290,10 @@ func runqput(pp *p, gp *g, next bool) {
 				gp_copy := gp
 				pp_copy := pp
 				log_goroutine_local_head_push(gp_copy, pp_copy)
+				h := atomic.Load(&pp.runqhead)
+				t := atomic.Load(&pp.runqtail)
+				log_q_size(pp_copy.id, int32(t-h))
+				log_q_size(-1, sched.runqsize)
 			}
 			return
 		}
@@ -6288,6 +6312,10 @@ retry:
 			gp_copy := gp
 			pp_copy := pp
 			log_goroutine_local_tail_push(gp_copy, pp_copy)
+			h := atomic.Load(&pp.runqhead)
+			t := atomic.Load(&pp.runqtail)
+			log_q_size(pp_copy.id, int32(t-h))
+			log_q_size(-1, sched.runqsize)
 		}
 		return
 	}
@@ -6361,6 +6389,14 @@ func runqputbatch(pp *p, q *gQueue, qsize int) {
 	}
 	qsize -= int(n)
 
+	if instrumentationEnabled {
+		pp_copy := pp
+		h := atomic.Load(&pp.runqhead)
+		t := atomic.Load(&pp.runqtail)
+		log_q_size(pp_copy.id, int32(t-h))
+		log_q_size(-1, sched.runqsize)
+	}
+
 	if randomizeScheduler {
 		off := func(o uint32) uint32 {
 			return (pp.runqtail + o) % uint32(len(pp.runq))
@@ -6405,6 +6441,10 @@ func runqget(pp *p) (gp *g, inheritTime bool) {
 				gp_copy := gp
 				pp_copy := pp
 				log_goroutine_local_pop(gp_copy, pp_copy)
+				h := atomic.Load(&pp.runqhead)
+				t := atomic.Load(&pp.runqtail)
+				log_q_size(pp_copy.id, int32(t-h))
+				log_q_size(-1, sched.runqsize)
 			}
 			return gp, false
 		}
@@ -6451,6 +6491,13 @@ retry:
 		}
 		drainQ.pushBack(gp)
 		n++
+	}
+	if instrumentationEnabled {
+		pp_copy := pp
+		h := atomic.Load(&pp.runqhead)
+		t := atomic.Load(&pp.runqtail)
+		log_q_size(pp_copy.id, int32(t-h))
+		log_q_size(-1, sched.runqsize)
 	}
 	return
 }

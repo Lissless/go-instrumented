@@ -69,18 +69,24 @@ var GoroutineStatusStrings = map[gstatus]string{
 type schedEvent struct {
 	ActionID    int
 	Timestamp   int64  // timestamp (nanoseconds)
-	GoRoutineID int64  // goroutine ID
+	GoRoutineID int64  // goroutine ID, ID:0 is the scheduler
 	ProcessorID int32  // processor ID
 	OldStatus   uint32 // the status this goroutine moved from, 66 is a no-op (invalid)
 	NewStatus   uint32 // the status this goroutine moved from to, 66 is a no-op (invalid)
 	WaitReason  uint8  // (waitReason) Reason why the gorouine was put to wait if relevant action, 66 is a no-op (invalid)
 }
 
+type gQueueTimestamp struct {
+	ProcessorID int32 // processor ID, ID: -1 is the scheduler so we can measure the global queue
+	QSize       int32 // number of gorountines the runq holds at this time
+	Timestamp   int64 // timestamp (nanoseconds)
+}
+
 var (
-	goEvents   [maxEvents]schedEvent
-	goEventIdx uint64
-	// goCreations [maxEvents]schedEvent
-	// goCreationIdx uint64
+	goEvents           [maxEvents]schedEvent
+	goEventIdx         uint64
+	queueLenTimestamps [maxEvents]gQueueTimestamp
+	qSizeIdx           uint64
 	// tailPushEvents [maxEvents]schedEvent
 	// tailPushEventIdx uint64
 	// headPushEvents [maxEvents]schedEvent
@@ -245,6 +251,14 @@ func log_goroutine_change_status(gp *g, oldval, newval uint32) {
 	}
 }
 
+func log_q_size(goid int32, size int32) {
+	idx := atomic.Xadd64(&qSizeIdx, 1) - 1
+	log_entry := &queueLenTimestamps[idx]
+	log_entry.ProcessorID = goid
+	log_entry.QSize = size
+	log_entry.Timestamp = nanotime()
+}
+
 func log_event(actionID int, gp *g, pid int32, log_entry *schedEvent, oldval, newval uint32, waitReason uint8) {
 	log_entry.Timestamp = nanotime()
 	log_entry.GoRoutineID = int64(gp.goid)
@@ -283,6 +297,22 @@ func dump_instrumentation_logs() {
 			print(", ran on P", e.ProcessorID)
 		}
 		print("\n")
+	}
+
+	print("=== End Dump ===\n")
+}
+
+func dump_timing_logs() {
+	if !instrumentationEnabled {
+		print("Instrumentation disabled\n")
+		return
+	}
+
+	print("=== Timing Log Dump ===\n")
+
+	for i := uint64(0); i < qSizeIdx; i++ {
+		t := queueLenTimestamps[i]
+		print("Timestamp: ", t.Timestamp, "\tProcessorID: ", t.ProcessorID, "\tQueue Size: ", t.QSize, "\n")
 	}
 
 	print("=== End Dump ===\n")
