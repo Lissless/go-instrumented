@@ -1093,7 +1093,7 @@ func casgstatus(gp *g, oldval, newval uint32) {
 	// log buffer from here
 	if instrumentationEnabled {
 		gp_copy := gp
-		idx := atomic.Xadd64(&changeStatusIdx, 1) - 1
+		idx := atomic.Xadd64(&ChangeStatusIdx, 1) - 1
 		var wr uint8
 		wr = WAIT_REASON_NOOP
 		if newval == _Gwaiting {
@@ -1104,7 +1104,7 @@ func casgstatus(gp *g, oldval, newval uint32) {
 			if gp.m != nil {
 				pid = int32(gp.m.id)
 			}
-			changeStatusEvents[idx] = changeEvent{
+			ChangeStatusEvents[idx] = ChangeEvent{
 				Timestamp:   nanotime(),
 				GoRoutineID: int64(gp_copy.goid),
 				ActionID:    GOROUTINE_CHANGE_STATUS,
