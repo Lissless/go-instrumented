@@ -69,15 +69,15 @@ var GoroutineStatusStrings = map[gstatus]string{
 }
 
 type SchedEvent struct {
-	ActionID    int
 	Timestamp   int64 // timestamp (nanoseconds)
+	ActionID    int
 	GoRoutineID int64 // goroutine ID, ID:0 is the scheduler
 	ProcessorID int32 // processor ID
 }
 
-type changeEvent struct {
+type ChangeEvent struct {
+	Timestamp   int64 // timestamp (nanoseconds)
 	ActionID    int
-	Timestamp   int64  // timestamp (nanoseconds)
 	GoRoutineID int64  // goroutine ID, ID:0 is the scheduler
 	ProcessorID int32  // processor ID
 	OldStatus   uint32 // the status this goroutine moved from, 66 is a no-op (invalid)
@@ -85,19 +85,19 @@ type changeEvent struct {
 	WaitReason  uint8  // (waitReason) Reason why the gorouine was put to wait if relevant action, 66 is a no-op (invalid)
 }
 
-type gQueueTimestamp struct {
+type GQueueTimestamp struct {
+	Timestamp   int64 // timestamp (nanoseconds)
 	ProcessorID int32 // processor ID, ID: -1 is the scheduler so we can measure the global queue
 	QSize       int32 // number of gorountines the runq holds at this time
-	Timestamp   int64 // timestamp (nanoseconds)
 }
 
 var (
 	GoEvents           [MaxEvents]SchedEvent
 	GoEventIdx         uint64
-	queueLenTimestamps [MaxEvents]gQueueTimestamp
-	qSizeIdx           uint64
-	changeStatusEvents [MaxEvents]changeEvent
-	changeStatusIdx    uint64
+	QueueLenTimestamps [MaxEvents]GQueueTimestamp
+	QSizeIdx           uint64
+	ChangeStatusEvents [MaxEvents]ChangeEvent
+	ChangeStatusIdx    uint64
 	// headPushEvents [MaxEvents]SchedEvent
 	// headPushEventIdx uint64
 	// globalPushEvents [MaxEvents]SchedEvent
@@ -231,15 +231,15 @@ func log_goroutine_change_status(gp *g, oldval, newval uint32) {
 		if gp.m != nil {
 			pid = int32(gp.m.id)
 		}
-		log_entry := &changeStatusEvents[idx]
+		log_entry := &ChangeStatusEvents[idx]
 		log_change_stat_event(GOROUTINE_CHANGE_STATUS, gp, pid, log_entry, oldval, newval, wr)
 	}
 }
 
 func log_q_size(goid int32, size int32) {
-	idx := atomic.Xadd64(&qSizeIdx, 1) - 1
+	idx := atomic.Xadd64(&QSizeIdx, 1) - 1
 	if idx < MaxEvents {
-		log_entry := &queueLenTimestamps[idx]
+		log_entry := &QueueLenTimestamps[idx]
 		log_entry.ProcessorID = goid
 		log_entry.QSize = size
 		log_entry.Timestamp = nanotime()
@@ -253,7 +253,7 @@ func log_event(actionID int, gp *g, pid int32, log_entry *SchedEvent) {
 	log_entry.ProcessorID = pid
 }
 
-func log_change_stat_event(actionID int, gp *g, pid int32, log_entry *changeEvent, oldval, newval uint32, waitReason uint8) {
+func log_change_stat_event(actionID int, gp *g, pid int32, log_entry *ChangeEvent, oldval, newval uint32, waitReason uint8) {
 	log_entry.Timestamp = nanotime()
 	log_entry.GoRoutineID = int64(gp.goid)
 	log_entry.ActionID = actionID
@@ -297,15 +297,15 @@ func Dump_change_status_logs() {
 		return
 	}
 
-	max := changeStatusIdx
-	if changeStatusIdx > MaxEvents {
+	max := ChangeStatusIdx
+	if ChangeStatusIdx > MaxEvents {
 		max = MaxEvents
 	}
 
 	print("=== Goroutine Status Log Dump ===\n")
 
 	for i := uint64(0); i < max; i++ {
-		slog := changeStatusEvents[i]
+		slog := ChangeStatusEvents[i]
 		newStat := gstatus(slog.NewStatus)
 		print("Time: ", slog.Timestamp, " - Goroutine ", slog.GoRoutineID, " action: ", ActionIDStrings[slog.ActionID])
 		print(", From: ", gStatusStrings[gstatus(slog.OldStatus)], " To: ", gStatusStrings[newStat])
@@ -326,15 +326,15 @@ func Dump_qsize_logs() {
 		return
 	}
 
-	max := qSizeIdx
-	if qSizeIdx > MaxEvents {
+	max := QSizeIdx
+	if QSizeIdx > MaxEvents {
 		max = MaxEvents
 	}
 
 	print("=== QSize Log Dump ===\n")
 
 	for i := uint64(0); i < max; i++ {
-		t := queueLenTimestamps[i]
+		t := QueueLenTimestamps[i]
 		print("Timestamp: ", t.Timestamp, "\tProcessorID: ", t.ProcessorID, "\tQueue Size: ", t.QSize, "\n")
 	}
 

@@ -27,11 +27,32 @@ func DumpInstrumentationLogsToFile(filename string) {
 		limit = runtime.MaxEvents
 	}
 
-	// in case we do not meet max we must fit the data to the appropriate size
-	// array
-	events := make([]runtime.SchedEvent, limit)
+	f, err := os.Create(filename)
+	if err != nil {
+		println("Failed to create dump file:", err.Error())
+		return
+	}
+	defer f.Close()
+
+	enc := json.NewEncoder(f)
+
+	// Write each event as a single JSON object on its own line.
 	for i := uint64(0); i < limit; i++ {
-		events[i] = runtime.GoEvents[i&(runtime.MaxEvents-1)]
+		event := runtime.GoEvents[i&(runtime.MaxEvents-1)]
+		if err := enc.Encode(event); err != nil {
+			println("Failed to encode event:", err.Error())
+			return
+		}
+	}
+
+}
+
+func DumpQSizeLogsToFile(filename string) {
+
+	limit := atomic.LoadUint64(&runtime.QSizeIdx)
+
+	if limit > runtime.MaxEvents {
+		limit = runtime.MaxEvents
 	}
 
 	f, err := os.Create(filename)
@@ -42,6 +63,36 @@ func DumpInstrumentationLogsToFile(filename string) {
 	defer f.Close()
 
 	enc := json.NewEncoder(f)
-	enc.SetIndent("", "  ")
-	enc.Encode(events)
+	for i := uint64(0); i < limit; i++ {
+		event := runtime.QueueLenTimestamps[i&(runtime.MaxEvents-1)]
+		if err := enc.Encode(event); err != nil {
+			println("Failed to encode event:", err.Error())
+			return
+		}
+	}
+}
+
+func DumpGStatusLogsToFile(filename string) {
+
+	limit := atomic.LoadUint64(&runtime.ChangeStatusIdx)
+
+	if limit > runtime.MaxEvents {
+		limit = runtime.MaxEvents
+	}
+
+	f, err := os.Create(filename)
+	if err != nil {
+		println("Failed to create dump file:", err.Error())
+		return
+	}
+	defer f.Close()
+
+	enc := json.NewEncoder(f)
+	for i := uint64(0); i < limit; i++ {
+		event := runtime.ChangeStatusEvents[i&(runtime.MaxEvents-1)]
+		if err := enc.Encode(event); err != nil {
+			println("Failed to encode event:", err.Error())
+			return
+		}
+	}
 }
