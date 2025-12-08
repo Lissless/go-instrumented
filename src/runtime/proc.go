@@ -849,7 +849,7 @@ func schedinit() {
 	// Check to see if instrumentation metrics will be collected
 	if gogetenv("GOINSTRUMENT") == "1" {
 		instrumentationEnabled = true
-		print("Goroutine instrumentation enabled\n")
+		print("Goroutine instrumentation enabled: Preemptive\n")
 	}
 
 	// World is effectively started now, as P's can run.
@@ -1180,7 +1180,7 @@ func casgstatus(gp *g, oldval, newval uint32) {
 		if newval == _Gwaiting {
 			wr = uint8(gp_copy.waitreason)
 		}
-		if idx < maxEvents {
+		if idx < MaxEvents {
 			pid := int32(-1)
 			if gp.m != nil {
 				pid = int32(gp.m.id)
