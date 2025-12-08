@@ -2,7 +2,7 @@ package runtime
 
 import "runtime/internal/atomic"
 
-const maxEvents = 1 << 18
+const MaxEvents = 1 << 18
 const WAIT_REASON_NOOP = 66
 const STATUS_NOOP = 66
 
@@ -68,7 +68,7 @@ var GoroutineStatusStrings = map[gstatus]string{
 	GSCAN:            "_Gscan: GC Scanning the stack",
 }
 
-type schedEvent struct {
+type SchedEvent struct {
 	ActionID    int
 	Timestamp   int64 // timestamp (nanoseconds)
 	GoRoutineID int64 // goroutine ID, ID:0 is the scheduler
@@ -92,141 +92,141 @@ type gQueueTimestamp struct {
 }
 
 var (
-	goEvents           [maxEvents]schedEvent
-	goEventIdx         uint64
-	queueLenTimestamps [maxEvents]gQueueTimestamp
+	GoEvents           [MaxEvents]SchedEvent
+	GoEventIdx         uint64
+	queueLenTimestamps [MaxEvents]gQueueTimestamp
 	qSizeIdx           uint64
-	changeStatusEvents [maxEvents]changeEvent
+	changeStatusEvents [MaxEvents]changeEvent
 	changeStatusIdx    uint64
-	// headPushEvents [maxEvents]schedEvent
+	// headPushEvents [MaxEvents]SchedEvent
 	// headPushEventIdx uint64
-	// globalPushEvents [maxEvents]schedEvent
+	// globalPushEvents [MaxEvents]SchedEvent
 	// globalPushEventIdx uint64
-	// g2lPushEvents [maxEvents]schedEvent
+	// g2lPushEvents [MaxEvents]SchedEvent
 	// g2lPushEventIdx uint64
-	// lpopPushEvents [maxEvents]schedEvent
+	// lpopPushEvents [MaxEvents]SchedEvent
 	// lpopPushEventIdx uint64
-	// drainPushEvents [maxEvents]schedEvent
+	// drainPushEvents [MaxEvents]SchedEvent
 	// drainPushEventIdx uint64
-	// stealPushEvents [maxEvents]schedEvent
+	// stealPushEvents [MaxEvents]SchedEvent
 	// stealPushEventIdx uint64
-	// executePushEvents [maxEvents]schedEvent
+	// executePushEvents [MaxEvents]SchedEvent
 	// executePushEventIdx uint64
 )
 
 func log_goroutine_creation(gp *g, pp *p) {
-	idx := atomic.Xadd64(&goEventIdx, 1) - 1
-	if idx < maxEvents {
+	idx := atomic.Xadd64(&GoEventIdx, 1) - 1
+	if idx < MaxEvents {
 		pid := int32(-1)
 		if pp != nil {
 			pid = pp.id
 		}
-		log_entry := &goEvents[idx]
+		log_entry := &GoEvents[idx]
 		log_event(GOROUTINE_CREATION, gp, pid, log_entry)
 	}
 }
 
 func log_goroutine_local_tail_push(gp *g, pp *p) {
-	idx := atomic.Xadd64(&goEventIdx, 1) - 1
-	if idx < maxEvents {
+	idx := atomic.Xadd64(&GoEventIdx, 1) - 1
+	if idx < MaxEvents {
 		pid := int32(-1)
 		if pp != nil {
 			pid = pp.id
 		}
-		log_entry := &goEvents[idx]
+		log_entry := &GoEvents[idx]
 		log_event(LOCAL_QUEUE_TAIL, gp, pid, log_entry)
 	}
 }
 
 func log_goroutine_local_head_push(gp *g, pp *p) {
-	idx := atomic.Xadd64(&goEventIdx, 1) - 1
-	if idx < maxEvents {
+	idx := atomic.Xadd64(&GoEventIdx, 1) - 1
+	if idx < MaxEvents {
 		pid := int32(-1)
 		if pp != nil {
 			pid = pp.id
 		}
-		log_entry := &goEvents[idx]
+		log_entry := &GoEvents[idx]
 		log_event(LOCAL_QUEUE_HEAD, gp, pid, log_entry)
 	}
 }
 
 func log_goroutine_local_global_push(gp *g) {
-	idx := atomic.Xadd64(&goEventIdx, 1) - 1
-	if idx < maxEvents {
+	idx := atomic.Xadd64(&GoEventIdx, 1) - 1
+	if idx < MaxEvents {
 		pid := int32(-1)
 		if gp.m != nil {
 			pid = int32(gp.m.id)
 		}
-		log_entry := &goEvents[idx]
+		log_entry := &GoEvents[idx]
 		log_event(GLOBAL_QUEUE_PUSH, gp, pid, log_entry)
 	}
 }
 
 func log_goroutine_global_to_local(gp *g, pp *p) {
-	idx := atomic.Xadd64(&goEventIdx, 1) - 1
-	if idx < maxEvents {
+	idx := atomic.Xadd64(&GoEventIdx, 1) - 1
+	if idx < MaxEvents {
 		pid := int32(-1)
 		if pp != nil {
 			pid = pp.id
 		}
-		log_entry := &goEvents[idx]
+		log_entry := &GoEvents[idx]
 		log_event(GLOBAL_TO_LOCAL, gp, pid, log_entry)
 	}
 }
 
 func log_goroutine_local_pop(gp *g, pp *p) {
-	idx := atomic.Xadd64(&goEventIdx, 1) - 1
-	if idx < maxEvents {
+	idx := atomic.Xadd64(&GoEventIdx, 1) - 1
+	if idx < MaxEvents {
 		pid := int32(-1)
 		if pp != nil {
 			pid = pp.id
 		}
-		log_entry := &goEvents[idx]
+		log_entry := &GoEvents[idx]
 		log_event(LOCAL_QUEUE_POP, gp, pid, log_entry)
 	}
 }
 
 func log_goroutine_local_drain(gp *g, pp *p) {
-	idx := atomic.Xadd64(&goEventIdx, 1) - 1
-	if idx < maxEvents {
+	idx := atomic.Xadd64(&GoEventIdx, 1) - 1
+	if idx < MaxEvents {
 		pid := int32(-1)
 		if pp != nil {
 			pid = pp.id
 		}
-		log_entry := &goEvents[idx]
+		log_entry := &GoEvents[idx]
 		log_event(LOCAL_QUEUE_DRAIN, gp, pid, log_entry)
 	}
 }
 
 func log_goroutine_local_steal(gp *g, pp *p) {
-	idx := atomic.Xadd64(&goEventIdx, 1) - 1
-	if idx < maxEvents {
+	idx := atomic.Xadd64(&GoEventIdx, 1) - 1
+	if idx < MaxEvents {
 		pid := int32(-1)
 		if pp != nil {
 			pid = pp.id
 		}
-		log_entry := &goEvents[idx]
+		log_entry := &GoEvents[idx]
 		log_event(PROCESSOR_WORK_STEAL, gp, pid, log_entry)
 	}
 }
 
 func log_goroutine_execution(gp *g) {
-	idx := atomic.Xadd64(&goEventIdx, 1) - 1
-	if idx < maxEvents {
+	idx := atomic.Xadd64(&GoEventIdx, 1) - 1
+	if idx < MaxEvents {
 		pid := int32(-1)
-		log_entry := &goEvents[idx]
+		log_entry := &GoEvents[idx]
 		log_event(GOROUTINE_EXECUTION, gp, pid, log_entry)
 	}
 }
 
 func log_goroutine_change_status(gp *g, oldval, newval uint32) {
-	idx := atomic.Xadd64(&goEventIdx, 1) - 1
+	idx := atomic.Xadd64(&GoEventIdx, 1) - 1
 	var wr uint8
 	wr = 66
 	if gstatus(newval) == GWAITING {
 		wr = uint8(gp.waitreason)
 	}
-	if idx < maxEvents {
+	if idx < MaxEvents {
 		pid := int32(-1)
 		if gp.m != nil {
 			pid = int32(gp.m.id)
@@ -238,7 +238,7 @@ func log_goroutine_change_status(gp *g, oldval, newval uint32) {
 
 func log_q_size(goid int32, size int32) {
 	idx := atomic.Xadd64(&qSizeIdx, 1) - 1
-	if idx < maxEvents {
+	if idx < MaxEvents {
 		log_entry := &queueLenTimestamps[idx]
 		log_entry.ProcessorID = goid
 		log_entry.QSize = size
@@ -246,7 +246,7 @@ func log_q_size(goid int32, size int32) {
 	}
 }
 
-func log_event(actionID int, gp *g, pid int32, log_entry *schedEvent) {
+func log_event(actionID int, gp *g, pid int32, log_entry *SchedEvent) {
 	log_entry.Timestamp = nanotime()
 	log_entry.GoRoutineID = int64(gp.goid)
 	log_entry.ActionID = actionID
@@ -263,20 +263,20 @@ func log_change_stat_event(actionID int, gp *g, pid int32, log_entry *changeEven
 	log_entry.WaitReason = waitReason
 }
 
-func dump_instrumentation_logs() {
+func Dump_instrumentation_logs() {
 	if !instrumentationEnabled {
 		print("Instrumentation disabled\n")
 		return
 	}
 
 	print("=== Instrumentation Dump ===\n")
-	max := goEventIdx
-	if goEventIdx > maxEvents {
-		max = maxEvents
+	max := GoEventIdx
+	if GoEventIdx > MaxEvents {
+		max = MaxEvents
 	}
 
 	for i := uint64(0); i < max; i++ {
-		e := goEvents[i]
+		e := GoEvents[i]
 		print("Time: ", e.Timestamp, " - Goroutine ", e.GoRoutineID, " action: ", ActionIDStrings[e.ActionID])
 		if e.ActionID == PROCESSOR_WORK_STEAL {
 			print(", Stolen from Processor P", e.ProcessorID)
@@ -291,15 +291,15 @@ func dump_instrumentation_logs() {
 	print("=== End Dump ===\n")
 }
 
-func dump_change_status_logs() {
+func Dump_change_status_logs() {
 	if !instrumentationEnabled {
 		print("Instrumentation disabled\n")
 		return
 	}
 
 	max := changeStatusIdx
-	if changeStatusIdx > maxEvents {
-		max = maxEvents
+	if changeStatusIdx > MaxEvents {
+		max = MaxEvents
 	}
 
 	print("=== Goroutine Status Log Dump ===\n")
@@ -320,15 +320,15 @@ func dump_change_status_logs() {
 
 }
 
-func dump_qsize_logs() {
+func Dump_qsize_logs() {
 	if !instrumentationEnabled {
 		print("Instrumentation disabled\n")
 		return
 	}
 
 	max := qSizeIdx
-	if qSizeIdx > maxEvents {
-		max = maxEvents
+	if qSizeIdx > MaxEvents {
+		max = MaxEvents
 	}
 
 	print("=== QSize Log Dump ===\n")
