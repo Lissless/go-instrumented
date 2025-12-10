@@ -291,6 +291,10 @@ func Dump_instrumentation_logs() {
 	print("=== End Dump ===\n")
 }
 
+func Nanotime() int64{
+	return nanotime()
+}
+
 func Dump_change_status_logs() {
 	if !instrumentationEnabled {
 		print("Instrumentation disabled\n")

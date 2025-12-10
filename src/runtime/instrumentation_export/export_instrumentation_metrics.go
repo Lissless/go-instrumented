@@ -19,6 +19,10 @@ func DumpGStatusLogs() {
 	runtime.Dump_change_status_logs()
 }
 
+func NanotimeNow() int64{
+	return runtime.Nanotime()
+}
+
 func DumpInstrumentationLogsToFile(filename string) {
 
 	limit := atomic.LoadUint64(&runtime.GoEventIdx)
