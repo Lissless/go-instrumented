@@ -91,6 +91,12 @@ type GQueueTimestamp struct {
 	QSize       int32 // number of gorountines the runq holds at this time
 }
 
+type CycleEvent struct {
+	Timestamp   int64
+	GoRoutineID int64
+	Cycles      uint64
+}
+
 var (
 	GoEvents           [MaxEvents]SchedEvent
 	GoEventIdx         uint64
@@ -98,8 +104,8 @@ var (
 	QSizeIdx           uint64
 	ChangeStatusEvents [MaxEvents]ChangeEvent
 	ChangeStatusIdx    uint64
-	// headPushEvents [MaxEvents]SchedEvent
-	// headPushEventIdx uint64
+	CycleEvents        [MaxEvents]CycleEvent
+	CycleEventIdx      uint64
 	// globalPushEvents [MaxEvents]SchedEvent
 	// globalPushEventIdx uint64
 	// g2lPushEvents [MaxEvents]SchedEvent
@@ -236,13 +242,23 @@ func log_goroutine_change_status(gp *g, oldval, newval uint32) {
 	}
 }
 
-func log_q_size(goid int32, size int32) {
+func log_q_size(pid int32, size int32) {
 	idx := atomic.Xadd64(&QSizeIdx, 1) - 1
 	if idx < MaxEvents {
 		log_entry := &QueueLenTimestamps[idx]
-		log_entry.ProcessorID = goid
+		log_entry.ProcessorID = pid
 		log_entry.QSize = size
 		log_entry.Timestamp = nanotime()
+	}
+}
+
+func log_cycles_event(goid int64, cycles uint64) {
+	idx := atomic.Xadd64(&CycleEventIdx, 1) - 1
+	if idx < MaxEvents {
+		log_entry := &CycleEvents[idx]
+		log_entry.Timestamp = nanotime()
+		log_entry.GoRoutineID = goid
+		log_entry.Cycles = cycles
 	}
 }
 
@@ -262,6 +278,12 @@ func log_change_stat_event(actionID int, gp *g, pid int32, log_entry *ChangeEven
 	log_entry.NewStatus = newval
 	log_entry.WaitReason = waitReason
 }
+
+func Nanotimenow() int64 {
+	return nanotime()
+}
+
+func Rdtsc() uint64 // implemented in assembly
 
 func Dump_instrumentation_logs() {
 	if !instrumentationEnabled {
@@ -289,10 +311,6 @@ func Dump_instrumentation_logs() {
 	print("Total # events: ", max, "\n")
 
 	print("=== End Dump ===\n")
-}
-
-func Nanotime() int64{
-	return nanotime()
 }
 
 func Dump_change_status_logs() {
@@ -344,4 +362,27 @@ func Dump_qsize_logs() {
 
 	print("Total # events: ", max, "\n")
 	print("=== End Dump ===\n")
+}
+
+func Dump_cycles_log() {
+	if !instrumentationEnabled {
+		print("Instrumentation disabled\n")
+		return
+	}
+
+	max := CycleEventIdx
+	if CycleEventIdx > MaxEvents {
+		max = MaxEvents
+	}
+
+	print("=== Cycles Log Dump ===\n")
+
+	for i := uint64(0); i < max; i++ {
+		c := CycleEvents[i]
+		print("Timestamp: ", c.Timestamp, " - Goroutine: ", c.GoRoutineID, ", # Cycles: ", c.Cycles, "\n")
+	}
+
+	print("Total # events: ", max, "\n")
+	print("=== End Dump ===\n")
+
 }

@@ -4553,6 +4553,7 @@ func newproc1(fn *funcval, callergp *g, callerpc uintptr) *g {
 	if fn == nil {
 		fatal("go of nil func value")
 	}
+	start := Rdtsc()
 
 	mp := acquirem() // disable preemption because we hold M and P in local vars.
 	pp := mp.p.ptr()
@@ -4638,6 +4639,11 @@ func newproc1(fn *funcval, callergp *g, callerpc uintptr) *g {
 		traceGoCreate(newg, newg.startpc)
 	}
 	releasem(mp)
+
+	end := Rdtsc()
+	if instrumentationEnabled {
+		log_cycles_event(int64(newg.goid), (end - start))
+	}
 
 	return newg
 }

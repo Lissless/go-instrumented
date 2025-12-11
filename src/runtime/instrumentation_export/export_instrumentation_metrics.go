@@ -19,8 +19,12 @@ func DumpGStatusLogs() {
 	runtime.Dump_change_status_logs()
 }
 
-func NanotimeNow() int64{
-	return runtime.Nanotime()
+func DumpCyclesLogs() {
+	runtime.Dump_cycles_log()
+}
+
+func NanotimeNow() int64 {
+	return runtime.Nanotimenow()
 }
 
 func DumpInstrumentationLogsToFile(filename string) {
@@ -94,6 +98,31 @@ func DumpGStatusLogsToFile(filename string) {
 	enc := json.NewEncoder(f)
 	for i := uint64(0); i < limit; i++ {
 		event := runtime.ChangeStatusEvents[i&(runtime.MaxEvents-1)]
+		if err := enc.Encode(event); err != nil {
+			println("Failed to encode event:", err.Error())
+			return
+		}
+	}
+}
+
+func DumpCyclesLogsToFile(filename string) {
+
+	limit := atomic.LoadUint64(&runtime.CycleEventIdx)
+
+	if limit > runtime.MaxEvents {
+		limit = runtime.MaxEvents
+	}
+
+	f, err := os.Create(filename)
+	if err != nil {
+		println("Failed to create dump file:", err.Error())
+		return
+	}
+	defer f.Close()
+
+	enc := json.NewEncoder(f)
+	for i := uint64(0); i < limit; i++ {
+		event := runtime.CycleEvents[i&(runtime.MaxEvents-1)]
 		if err := enc.Encode(event); err != nil {
 			println("Failed to encode event:", err.Error())
 			return
